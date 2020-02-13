@@ -1,0 +1,224 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Feb 13 14:10:36 2020
+
+@author: Wolverine
+"""
+
+import numpy as np
+import seaborn as sns
+from catboost import CatBoostClassifier
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_curve, roc_auc_score
+import missingno as msno
+import pandas as pd
+
+
+#datasets
+train=pd.read_csv('train.csv')
+test=pd.read_csv('test.csv')
+songs=pd.read_csv('songs.csv')
+members=pd.read_csv('members.csv')
+train.head()
+test.head()
+songs.head()
+members.head()
+train.info()
+
+plt.figure(figsize=(5,5))
+ax=sns.countplot(x='source_type',data=train)
+ax.set_xticklabels(ax.get_xticklabels(),rotation=40,ha='right')
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(5,5))
+ax=sns.countplot(x='source_system_tab',data=train)
+ax.set_xticklabels(ax.get_xticklabels(),rotation=40,ha='right')
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(8,6))
+ax=sns.countplot(y=train['source_screen_name'],data=train,facecolor=(0,0,0,0),linewidth=5,edgecolor=sns.color_palette('dark',3))
+plt.show()
+
+plt.figure(figsize=(8,8))
+pp=pd.value_counts(members.gender)
+pp.plot.pie(startangle=90,autopct='%1.1f%%',shadow=False,explode=(0.05,0.05))
+plt.axis('equal')
+plt.show()
+
+
+members.info()
+
+
+#merge datasets
+#For train 
+train_members=pd.merge(train,members,on='msno',how='inner')
+train_merged=pd.merge(train_members,songs,on='song_id',how='outer')
+print(train_merged.head())
+print(len(train_merged.columns))
+print('\n')
+
+
+#for test
+test_members=pd.merge(test,members,on='msno',how='inner')
+test_merged=pd.merge(test_members,songs,on='song_id',how='outer')
+print(test_merged.head())
+print(len(test_merged.columns))
+print('\n')
+
+
+print(train_merged.columns.to_series().groupby(train_merged.dtypes).groups)
+
+print(test_merged.columns.to_series().groupby(test_merged.dtypes).groups)
+
+
+#Null values
+def check_missing_values(df):
+    if(df.isnull().values.any()==True):
+        columns_with_Nan=df.columns[df.isnull().any()].tolist()
+        print(columns_with_Nan)
+        for col in columns_with_Nan:
+            print('%s:%d'%(col,df[col].isnull().sum()))
+check_missing_values(train_merged)            
+check_missing_values(test_merged)
+
+
+def replace_nan_non(df):
+    obj_cols=list(df.select_dtypes(include=['float']).columns)
+    for col in obj_cols:
+        df[col]=df[col].fillna(np.int(-5))
+
+replace_nan_non(train_merged)
+replace_nan_non(test_merged)
+
+def replace_nan_obj(df):
+    obj_cols=list(df.select_dtypes(include=['object']).columns)
+    for col in obj_cols:
+        df[col]=df[col].fillna(' ')
+    print(obj_cols)
+
+
+#Visulaization
+data=train_merged.groupby('target').aggregate({'msno':'count'}).reset_index()
+a4_dims=(10,4)
+fix,ax=plt.subplots(figsize=a4_dims)
+ax=sns.barplot(x='target',y='msno',data=data)    
+
+train_merged=train_merged[train_merged.target!=-5]
+len(train_merged.index)
+
+
+
+data=train_merged.groupby('target').aggregate({'msno':'count'}).reset_index()
+a4_dims=(10,4)
+fix,ax=plt.subplots(figsize=a4_dims)
+ax=sns.barplot(x='target',y='msno',data=data)    
+
+#language
+data=train_merged.groupby('language').aggregate({'msno':'count'}).reset_index()
+a4_dims=(10,4)
+fix,ax=plt.subplots(figsize=a4_dims)
+ax=sns.barplot(x='language',y='msno',data=data)    
+ax.set_xticklabels(ax.get_xticklabels(),rotation=90)
+
+
+#city
+
+data=train_merged.groupby('city').aggregate({'msno':'count'}).reset_index()
+a4_dims=(10,4)
+fix,ax=plt.subplots(figsize=a4_dims)
+ax=sns.barplot(x='city',y='msno',data=data)    
+ax.set_xticklabels(ax.get_xticklabels(),rotation=90)
+
+
+
+#preparing datasets
+df=pd.read_csv('train.csv')
+df=df.sample(frac=0.1)
+songs=pd.read_csv('songs.csv')
+members=pd.read_csv('members.csv')
+
+test = df['test'].merge(df['members'], how='left', on='msno')
+test = test.merge(data['songs'], how='left', on='song_id')
+
+train = df['train'].merge(df['members'], how='left', on='msno')
+train = train.merge(data['songs'], how='left', on='song_id')
+
+del df
+
+#get a glimpse of how the dataset looks like
+train.head()
+
+for x in train.columns:
+    print(x + ": " + train[x].dtype.kind)
+    
+    
+for column in ['city', 'registered_via', 'language']:
+    train[column] = train[column].astype('str')
+    test[column] = test[column].astype('str')
+
+#it was discovered that 'registration_init_time' and 'expiration_date' should be datetime object, convert their data type
+for column in ['registration_init_time', 'expiration_date']:
+    train[column] = pd.to_datetime(train[column], format='%Y%m%d')
+    train['Year_' + column] = train[column].dt.year.astype(str)
+    train['Month_' + column] = train[column].dt.month.astype(str)
+    train['Day_' + column] = train[column].dt.day.astype(str)
+    train.drop([column], axis=1, inplace=True)
+    
+    test[column] = pd.to_datetime(test[column], format='%Y%m%d')
+    test['Year_' + column] = test[column].dt.year.astype(str)
+    test['Month_' + column] = test[column].dt.month.astype(str)
+    test['Day_' + column] = test[column].dt.day.astype(str)
+    test.drop([column], axis=1, inplace=True)    
+
+for x in train.columns:
+    print(x + ": " + train[x].dtype.kind)    
+
+
+for x in [x for x in train.columns if train[x].dtype.kind == 'O']:
+    train[x].fillna('NA', inplace=True)
+    
+for x in [x for x in test.columns if test[x].dtype.kind == 'O']:
+    test[x].fillna('NA', inplace =True)
+
+# check which numerical feature(s) still consist of null value and fill na for each of them using using appropriate method
+for x in [x for x in train.columns if train[x].dtype.kind in ['f','i']]:
+    print(x + ": ", train[x].isnull().sum())
+for x in [x for x in test.columns if test[x].dtype.kind in ['f','i']]:
+    print(x + ": ", test[x].isnull().sum())
+
+train['song_length'] = train['song_length'].fillna(train['song_length'].median())
+test['song_length'] = test['song_length'].fillna(test['song_length'].median())
+
+
+
+for x in [x for x in train.columns if train[x].dtype.kind == 'O']:
+    train[x] = train[x].astype('category')
+
+for x in [x for x in test.columns if test[x].dtype.kind == 'O']:
+    test[x] = test[x].astype('category')
+
+X = train.drop(['target'],axis=1)
+y = train.target
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, stratify=y, random_state=123)
+
+del X
+del y
+del train
+
+X_train, X_cv, y_train, y_cv = train_test_split(X_train, y_train, test_size = 0.25, stratify=y_train, random_state=123)
+
+
+cat_features_index = [i for i, x in enumerate(X_train.columns) if X_train[x].dtype.kind == 'O']
+model = CatBoostClassifier(iterations = 50, learning_rate = 0.3, eval_metric='AUC', max_ctr_complexity=2, boosting_type = 'Plain', bootstrap_type= 'Bernoulli', use_best_model=True, random_seed=123)
+model.fit(X_train, y_train, cat_features=cat_features_index, eval_set=(X_cv, y_cv))
+
+y_pred = model.predict_proba(X_test)
+print(roc_auc_score(y_test, y_pred[:,1]))
+
+fpr, tpr, threshold = roc_curve(y_test, y_pred[:,1])
+plt.scatter(x=fpr, y=tpr)
+plt.show()
+
